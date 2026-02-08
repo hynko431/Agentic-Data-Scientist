@@ -55,9 +55,9 @@ export const generateCode = async (step: string, context: string): Promise<{ cod
   }
 };
 
-export const generateSummary = async (executionLog: string): Promise<string> => {
+export const generateSummary = async (executionLog: string, metricsContext: string = "N/A"): Promise<string> => {
   try {
-    const prompt = `Execution Log:\n${executionLog}\n\nProvide a final summary report.`;
+    const prompt = `Execution Log:\n${executionLog}\n\nKey Metrics Derived from Analysis:\n${metricsContext}\n\nProvide a final summary report integrating these metrics.`;
 
     const response = await ai.models.generateContent({
       model: MODEL_SUMMARY,

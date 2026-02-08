@@ -22,6 +22,7 @@ export interface LogMessage {
   content: string;
   timestamp: Date;
   type: 'info' | 'code' | 'success' | 'error' | 'plan';
+  feedback?: 'positive' | 'negative' | null;
 }
 
 export interface AnalysisPlanStep {
@@ -64,4 +65,10 @@ export interface DashboardMetrics {
     drift: string;
     driftLevel: 'Low' | 'High' | 'Medium';
   }>;
+}
+
+export interface PipelineConfig {
+  driftThreshold: number;
+  accuracyThreshold: number;
+  maxRetrainingAttempts: number;
 }

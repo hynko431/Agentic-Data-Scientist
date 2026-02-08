@@ -31,12 +31,20 @@ MODELS_DIR = os.path.join(PROJECT_DIR, "saved_models")
 LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
 DATA_HISTORY_DIR = os.path.join(PROJECT_DIR, "data_history")
 
+# PIPELINE SETTINGS (Injectable via UI)
+PIPELINE_CONFIG = {
+    "drift_threshold": 0.05,        # P-value threshold for KS test
+    "max_accuracy_drop": 0.05,      # 5% drop allowed before retraining
+    "max_retries": 3                # Max automatic retraining attempts
+}
+
 # Create directories if they don't exist
 for directory in [PROJECT_DIR, MODELS_DIR, LOGS_DIR, DATA_HISTORY_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 print("✅ Environment Setup Complete.")
 print(f"📂 Project Directory: {os.path.abspath(PROJECT_DIR)}")
+print(f"⚙️ Active Config: {PIPELINE_CONFIG}")
 
 
 # ==========================================
@@ -188,7 +196,7 @@ class DriftDetector:
                 drifted_cols.append(col)
         
         if drifted_cols:
-            monitor.log_issue("data_drift", f"Drift detected in: {drifted_cols}", "warning")
+            monitor.log_issue("data_drift", f"Drift detected in: {drifted_cols} (p < {threshold})", "warning")
             return True
         return False
 
@@ -203,28 +211,84 @@ class ModelManager:
         self.models_dir = models_dir
         self.current_model = None
         self.current_preprocessor = None
+        self.current_metadata = {} # To store score, version, etc.
         self.load_latest_model()
 
     def get_latest_version_dir(self):
         """Finds the directory with the latest timestamp"""
+        if not os.path.exists(self.models_dir):
+            return None
         versions = sorted([d for d in os.listdir(self.models_dir) if d.startswith("model_v")])
         if not versions:
             return None
         return os.path.join(self.models_dir, versions[-1])
 
     def load_latest_model(self):
-        """Loads model and preprocessor from disk"""
+        """Loads model, preprocessor, and metadata from disk"""
         latest_dir = self.get_latest_version_dir()
         if latest_dir:
             try:
                 self.current_model = joblib.load(os.path.join(latest_dir, "model.pkl"))
                 self.current_preprocessor = joblib.load(os.path.join(latest_dir, "preprocessor.pkl"))
-                print(f"✅ Loaded model from: {latest_dir}")
+                
+                # Load metadata if exists
+                meta_path = os.path.join(latest_dir, "metadata.json")
+                if os.path.exists(meta_path):
+                     with open(meta_path, 'r') as f:
+                        self.current_metadata = json.load(f)
+                
+                print(f"✅ Loaded model from: {latest_dir} (Score: {self.current_metadata.get('score', 'N/A')})")
                 return True
             except Exception as e:
                 print(f"❌ Error loading model: {e}")
                 return False
         return False
+
+    def load_external_model(self, filepath):
+        """Loads an external custom model (e.g. uploaded .pkl)"""
+        try:
+            model = joblib.load(filepath)
+            print(f"✅ Loaded external model from: {filepath}")
+            return model
+        except Exception as e:
+            print(f"❌ Error loading external model: {e}")
+            return None
+
+    def compare_models(self, custom_model, X_test, y_test):
+        """Compares current internal model with a provided custom model"""
+        print("\\n⚖️  COMPARISON REPORT")
+        print("="*30)
+        
+        models = {'Pipeline Model': self.current_model, 'Custom Model': custom_model}
+        results = {}
+        
+        for name, model in models.items():
+            if model is None:
+                print(f"⚠️  {name} is missing.")
+                continue
+                
+            try:
+                preds = model.predict(X_test)
+                # Auto-detect metric
+                if len(np.unique(y_test)) < 20: # Classification
+                    score = accuracy_score(y_test, preds)
+                    metric = "Accuracy"
+                else:
+                    score = r2_score(y_test, preds)
+                    metric = "R2 Score"
+                
+                print(f"🔹 {name} {metric}: {score:.4f}")
+                results[name] = score
+            except Exception as e:
+                print(f"❌ {name} failed: {e}")
+
+        if len(results) == 2:
+            diff = results['Custom Model'] - results['Pipeline Model']
+            winner = "Custom Model" if diff > 0 else "Pipeline Model"
+            print("-" * 30)
+            print(f"🏆 WINNER: {winner} (Diff: {diff:+.4f})")
+            return results
+        return None
 
     def save_model(self, model, preprocessor, metrics):
         """Saves new model in a timestamped folder"""
@@ -241,6 +305,7 @@ class ModelManager:
         print(f"💾 Model saved: {version_dir}")
         self.current_model = model
         self.current_preprocessor = preprocessor
+        self.current_metadata = metrics
 
     def train(self, df, target_col, drift_detector_obj):
         """Trains a new model pipeline"""
@@ -368,62 +433,58 @@ def run_pipeline(filepath, target_col):
         print("🆕 No existing model found. Initial training required.")
         should_retrain = True
     
-    # Logic: Check for Drift if model exists
+    # Logic: Check for Drift OR Performance Drop if model exists
     elif manager.current_model and is_training_data:
-        drift_detected = drift_detector.detect_drift(df)
-        if drift_detected:
-            print("📉 Data Drift Detected. Evaluating retraining necessity...")
-            # We retrain if drift is detected AND we have labels
-            should_retrain = True
-        else:
-            print("✅ No Data Drift. Using existing model.")
-
-    # 5. Execute Training or Loading
-    if should_retrain:
-        pipeline, preprocessor, score = manager.train(df, target_col, drift_detector)
-        manager.save_model(pipeline, preprocessor, {'score': score})
+        # A) Check Drift
+        drift_detected = drift_detector.detect_drift(df, threshold=PIPELINE_CONFIG["drift_threshold"])
         
-        # Save this dataset as the new reference for drift detection
-        df.to_csv(os.path.join(DATA_HISTORY_DIR, "reference.csv"), index=False)
-        monitor.log_retraining("drift_or_init", 0, score, "success")
-    
-    else:
-        # If we didn't retrain, ensure we have the latest model loaded
-        if not manager.current_model:
-            print("⚠️ Inference skipped: No model available.")
-            return
-
-    # 6. Make Predictions
-    print("🔮 Generating Predictions...")
-    
-    # Prepare features (drop target if present)
-    X_pred = df.drop(columns=[target_col]) if target_col in df.columns else df
-    
-    try:
-        preds = manager.current_model.predict(X_pred)
-        df['prediction'] = preds
-        
-        # Log sample predictions
-        for i in range(min(5, len(df))):
-            monitor.log_prediction(X_pred.iloc[i].to_dict(), preds[i])
+        # B) Check Performance on New Data
+        # We perform a quick evaluation on the new batch
+        try:
+            X_new = df.drop(columns=[target_col])
+            y_new = df[target_col]
+            preds_new = manager.current_model.predict(X_new)
             
-        print(f"✅ Predictions Complete. First 5 results:\\n{preds[:5]}")
-    except Exception as e:
-        print(f"❌ Prediction Error (likely feature mismatch): {e}")
+            # Simple scoring based on prediction type (assuming classification for simplicity here)
+            current_batch_score = accuracy_score(y_new, preds_new) 
+            
+            baseline_score = manager.current_metadata.get('score', 0)
+            performance_drop = baseline_score - current_batch_score
+            
+            print(f"📊 Current Batch Score: {current_batch_score:.4f} (Baseline: {baseline_score:.4f})")
+            
+            if performance_drop > PIPELINE_CONFIG["max_accuracy_drop"]:
+                print(f"📉 Performance drop detected ({performance_drop:.2%} > {PIPELINE_CONFIG['max_accuracy_drop']:.2%})")
+                should_retrain = True
+            elif drift_detected:
+                print("⚠️ Significant drift detected. Triggering preventive retraining.")
+                should_retrain = True
+            else:
+                print("✅ Model performing within acceptable limits. No retraining needed.")
+                
+        except Exception as e:
+            print(f"⚠️ Could not evaluate performance on new batch (possibly different schema): {e}")
+            should_retrain = True
 
-    print("="*60)
-    print("🏁 PIPELINE FINISHED")
-    print("="*60)
+    if should_retrain:
+        print("🔄 Initiating Retraining Sequence...")
+        new_model, new_prep, new_score = manager.train(df, target_col, drift_detector)
+        
+        manager.save_model(new_model, new_prep, {"score": new_score, "timestamp": datetime.datetime.now().isoformat()})
+        monitor.log_retraining("performance_drop_or_drift", 0.0, new_score, "success")
+    else:
+        # Inference Mode
+        if not is_training_data:
+            print("🔮 Running Inference...")
+            if manager.current_model:
+                preds = manager.current_model.predict(df)
+                monitor.log_prediction(df.head().to_dict(), preds[:5])
+                print(f"✅ Generated {len(preds)} predictions.")
+                df['prediction'] = preds
+                df.to_csv(os.path.join(PROJECT_DIR, "results.csv"), index=False)
+            else:
+                print("❌ No model available for inference.")
 
-# ==========================================
-# USER INPUT SECTION
-# ==========================================
-
-# SCENARIO 1: First Run (Training)
-run_pipeline("initial_data.csv", target_col="target")
-
-# SCENARIO 2: Simulate New Data with Drift (Automatic Retraining)
-print("\\n\\n--- SIMULATING TIME PASSING & NEW DATA ARRIVING ---\\n")
-create_dummy_data("new_drifted_data.csv", drift=True)
-run_pipeline("new_drifted_data.csv", target_col="target")
+# Example Usage
+# run_pipeline("initial_data.csv", "target")
 `;
