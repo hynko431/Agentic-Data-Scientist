@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import AgentWorkspace from './components/AgentWorkspace';
+import ChatBot from './components/ChatBot';
 import { DashboardMetrics } from './types';
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
       {currentView === 'landing' && <LandingPage onNavigate={navigateTo} />}
       {currentView === 'dashboard' && <Dashboard onNavigate={navigateTo} metrics={dashboardMetrics} />}
       {currentView === 'workspace' && <AgentWorkspace onBack={() => navigateTo('dashboard')} onUpdateDashboard={setDashboardMetrics} />}
+      <ChatBot />
     </>
   );
 }

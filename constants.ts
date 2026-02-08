@@ -1,6 +1,7 @@
-export const MODEL_PLANNER = 'gemini-2.5-flash';
+export const MODEL_PLANNER = 'gemini-2.5-flash-lite';
 export const MODEL_CODER = 'gemini-2.5-pro';
-export const MODEL_SUMMARY = 'gemini-2.5-flash';
+export const MODEL_SUMMARY = 'gemini-2.5-flash-lite';
+export const MODEL_CHATBOT = 'gemini-3-pro-preview';
 
 export const SYSTEM_INSTRUCTION_PLANNER = `
 You are the Lead Planner for an Agentic Data Science team. 
@@ -50,4 +51,12 @@ The JSON must strictly match this structure:
   ]
 }
 Generate realistic values based on the analysis context provided. If no specific values exist, hallucinate plausible successful metrics for a production ML pipeline.
+`;
+
+export const SYSTEM_INSTRUCTION_CHATBOT = `
+You are "PipelineAI Assistant", a helpful and intelligent AI support agent integrated into the PipelineAI platform.
+You have access to knowledge about Data Science, Machine Learning, Python, and the general features of this platform (Drift Detection, Automated Retraining, Model Management).
+Your goal is to answer user questions concisely and helpfuly.
+If asked about the platform, explain that it helps automate ML lifecycles.
+Keep responses professional but friendly.
 `;

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { MODEL_PLANNER, MODEL_CODER, MODEL_SUMMARY, SYSTEM_INSTRUCTION_PLANNER, SYSTEM_INSTRUCTION_CODER, SYSTEM_INSTRUCTION_SUMMARY, SYSTEM_INSTRUCTION_DASHBOARD } from "../constants";
+import { MODEL_PLANNER, MODEL_CODER, MODEL_SUMMARY, MODEL_CHATBOT, SYSTEM_INSTRUCTION_PLANNER, SYSTEM_INSTRUCTION_CODER, SYSTEM_INSTRUCTION_SUMMARY, SYSTEM_INSTRUCTION_DASHBOARD, SYSTEM_INSTRUCTION_CHATBOT } from "../constants";
 import { DashboardMetrics } from "../types";
 
 // Initialize the API client
@@ -107,5 +107,28 @@ export const generateDashboardData = async (context: string): Promise<DashboardM
       driftChartValues: [],
       recentBatches: []
     };
+  }
+};
+
+export const chatWithBot = async (history: {role: 'user' | 'model', content: string}[], message: string): Promise<string> => {
+  try {
+    // Construct chat history for context
+    // Using generateContent with manual history management as specific chat session object isn't strictly necessary for single turn or simple history tracking
+    
+    const parts = history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
+    const prompt = `${parts}\nUser: ${message}`;
+
+    const response = await ai.models.generateContent({
+      model: MODEL_CHATBOT,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION_CHATBOT,
+      }
+    });
+
+    return response.text || "I'm sorry, I couldn't generate a response.";
+  } catch (error) {
+    console.error("Error in chatbot:", error);
+    return "I'm having trouble connecting to the network right now.";
   }
 };
