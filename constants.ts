@@ -24,3 +24,25 @@ You are the Chief Data Scientist.
 Summarize the actions taken and the (simulated) results of the analysis.
 Provide a professional, concise conclusion based on the plan execution.
 `;
+
+export const SYSTEM_INSTRUCTION_DASHBOARD = `
+You are a Data Science System Monitor.
+Analyze the execution context and provided code/results.
+Generate a JSON object representing the current state of the ML pipeline for a dashboard.
+The JSON must strictly match this structure:
+{
+  "accuracy": "95.2%",
+  "accuracyChange": "+0.5%",
+  "f1Score": "0.93",
+  "driftScore": "0.05",
+  "driftStatus": "Normal", // or Critical, Warning
+  "avgLatency": "35ms",
+  "modelStatus": "System Operational",
+  "driftChartLabels": ["09:00", "10:00", "11:00", "12:00"], // Time labels
+  "driftChartValues": [0.02, 0.03, 0.01, 0.04], // P-values (0 to 1)
+  "recentBatches": [
+    {"id": "#b-1001", "timestamp": "10:00 AM", "version": "v2.5", "quality": "100%", "drift": "Low", "driftLevel": "Low"}
+  ]
+}
+Generate realistic values based on the analysis context provided. If no specific values exist, hallucinate plausible successful metrics for a production ML pipeline.
+`;

@@ -1,9 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
-import { MODEL_PLANNER, MODEL_CODER, MODEL_SUMMARY, SYSTEM_INSTRUCTION_PLANNER, SYSTEM_INSTRUCTION_CODER, SYSTEM_INSTRUCTION_SUMMARY } from "../constants";
+import { MODEL_PLANNER, MODEL_CODER, MODEL_SUMMARY, SYSTEM_INSTRUCTION_PLANNER, SYSTEM_INSTRUCTION_CODER, SYSTEM_INSTRUCTION_SUMMARY, SYSTEM_INSTRUCTION_DASHBOARD } from "../constants";
+import { DashboardMetrics } from "../types";
 
 // Initialize the API client
-// Note: In a real environment, error handling for missing key would be robust.
-// We assume process.env.API_KEY is available as per instructions.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generatePlan = async (userQuery: string, fileContext: string): Promise<string[]> => {
@@ -73,5 +72,40 @@ export const generateSummary = async (executionLog: string): Promise<string> => 
   } catch (error) {
     console.error("Error generating summary:", error);
     return "Error generating summary.";
+  }
+};
+
+export const generateDashboardData = async (context: string): Promise<DashboardMetrics> => {
+  try {
+    const prompt = `Based on the following analysis context, generate the dashboard metrics JSON:\n${context}`;
+
+    const response = await ai.models.generateContent({
+      model: MODEL_SUMMARY,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION_DASHBOARD,
+        temperature: 0.3,
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text || "{}";
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanText) as DashboardMetrics;
+  } catch (error) {
+    console.error("Error generating dashboard data:", error);
+    // Fallback default data
+    return {
+      accuracy: "N/A",
+      accuracyChange: "0%",
+      f1Score: "N/A",
+      driftScore: "0.00",
+      driftStatus: "Normal",
+      avgLatency: "0ms",
+      modelStatus: "System Operational",
+      driftChartLabels: [],
+      driftChartValues: [],
+      recentBatches: []
+    };
   }
 };

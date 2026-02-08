@@ -45,3 +45,23 @@ export interface Artifact {
   content: string;
   language?: string;
 }
+
+export interface DashboardMetrics {
+  accuracy: string;
+  accuracyChange: string;
+  f1Score: string;
+  driftScore: string;
+  driftStatus: 'Normal' | 'Critical' | 'Warning';
+  avgLatency: string;
+  modelStatus: string;
+  driftChartLabels: string[];
+  driftChartValues: number[];
+  recentBatches: Array<{
+    id: string;
+    timestamp: string;
+    version: string;
+    quality: string;
+    drift: string;
+    driftLevel: 'Low' | 'High' | 'Medium';
+  }>;
+}
