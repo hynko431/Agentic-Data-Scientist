@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import AgentWorkspace from './components/AgentWorkspace';
@@ -25,6 +25,41 @@ function App() {
       {id: "#b-9819", timestamp: "Oct 25, 10:30:22", version: "v2.4", quality: "100% Valid", drift: "Low", driftLevel: "Low"}
     ]
   });
+
+  // WebSocket Connection for Real-Time Updates
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('Connected to monitoring server');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'metrics_update') {
+          setDashboardMetrics(prevMetrics => ({
+            ...prevMetrics,
+            ...data.metrics
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
+  }, []);
 
   const navigateTo = (view: string) => {
     if (view === 'landing' || view === 'dashboard' || view === 'workspace') {
